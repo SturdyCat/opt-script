@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 #copyright by hiboy
 source /etc/storage/script/init.sh
-nps_version_2="v0.26.9"
+nps_version_2="v0.26.10"
 nps_enable=`nvram get app_60`
 [ -z $nps_enable ] && nps_enable=0 && nvram set app_60=0
 npsc_enable=`nvram get app_58`
@@ -10,7 +10,6 @@ npss_enable=`nvram get app_59`
 [ -z $npss_enable ] && npss_enable=0 && nvram set app_59=0
 [ $npss_enable = 0 ] && [ $npsc_enable = 0 ] && nps_enable=0
 if [ "$nps_enable" != "0" ] ; then
-#nvramshow=`nvram showall | grep '=' | grep nps | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
 
 nps_renum=`nvram get nps_renum`
 nps_renum=${nps_renum:-"0"}
@@ -27,59 +26,21 @@ fi
 
 fi
 
-if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep np_s)" ]  && [ ! -s /tmp/script/_app14 ]; then
+if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep np_s)" ] && [ ! -s /tmp/script/_app14 ] ; then
 	mkdir -p /tmp/script
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_app14
+	{ echo '#!/bin/bash' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_app14
 	chmod 777 /tmp/script/_app14
 fi
 
 nps_restart () {
-
-relock="/var/lock/nps_restart.lock"
-if [ "$1" = "o" ] ; then
-	nvram set nps_renum="0"
-	[ -f $relock ] && rm -f $relock
-	return 0
-fi
-if [ "$1" = "x" ] ; then
-	if [ -f $relock ] ; then
-		logger -t "【nps】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		exit 0
-	fi
-	nps_renum=${nps_renum:-"0"}
-	nps_renum=`expr $nps_renum + 1`
-	nvram set nps_renum="$nps_renum"
-	if [ "$nps_renum" -gt "2" ] ; then
-		I=19
-		echo $I > $relock
-		logger -t "【nps】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		while [ $I -gt 0 ]; do
-			I=$(($I - 1))
-			echo $I > $relock
-			sleep 60
-			[ "$(nvram get nps_renum)" = "0" ] && exit 0
-			[ $I -lt 0 ] && break
-		done
-		nvram set nps_renum="0"
-	fi
-	[ -f $relock ] && rm -f $relock
-fi
-nvram set nps_status=0
-eval "$scriptfilepath &"
-exit 0
+i_app_restart "$@" -name="nps"
 }
 
 nps_get_status () {
 
-A_restart=`nvram get nps_status`
-B_restart="$nps_enable$nps_version$npsc_enable$npss_enable$(cat /etc/storage/app_15.sh /etc/storage/app_16.sh | grep -v '^#' | grep -v "^$")"
-B_restart=`echo -n "$B_restart" | md5sum | sed s/[[:space:]]//g | sed s/-//g`
-if [ "$A_restart" != "$B_restart" ] ; then
-	nvram set nps_status=$B_restart
-	needed_restart=1
-else
-	needed_restart=0
-fi
+B_restart="$nps_enable$nps_version$npsc_enable$npss_enable$(cat /etc/storage/app_15.sh /etc/storage/app_16.sh | grep -v '^#' | grep -v '^$')"
+
+i_app_get_status -name="nps" -valb="$B_restart"
 }
 
 nps_check () {
@@ -102,38 +63,12 @@ fi
 }
 
 nps_keep () {
-logger -t "【nps】" "守护进程启动"
-if [ -s /tmp/script/_opt_script_check ]; then
-sed -Ei '/【nps】|^$/d' /tmp/script/_opt_script_check
 if [ "$npss_enable" = "1" ] ; then
-cat >> "/tmp/script/_opt_script_check" <<-OSC
-	[ -z "\`pidof nps\`" ] || [ ! -s "/opt/bin/nps/nps" ] && nvram set nps_status=00 && logger -t "【nps】" "重新启动" && eval "$scriptfilepath &" && sed -Ei '/【nps】|^$/d' /tmp/script/_opt_script_check # 【nps】
-OSC
-fi
-sed -Ei '/【npc】|^$/d' /tmp/script/_opt_script_check
-if [ "$npsc_enable" = "1" ] ; then
-cat >> "/tmp/script/_opt_script_check" <<-OSC
-	[ -z "\`pidof npc\`" ] || [ ! -s "/opt/bin/nps/npc" ] && nvram set nps_status=00 && logger -t "【nps】" "重新启动" && eval "$scriptfilepath &" && sed -Ei '/【npc】|^$/d' /tmp/script/_opt_script_check # 【npc】
-OSC
-fi
-return
-fi
-
-while true; do
-if [ "$npss_enable" = "1" ] ; then
-	if [ -z "`pidof nps`" ] || [ ! -s "/opt/bin/nps/nps" ] ; then
-		logger -t "【nps】" "nps重新启动"
-		nps_restart
-	fi
+i_app_keep -name="nps" -pidof="nps" &
 fi
 if [ "$npsc_enable" = "1" ] ; then
-	if [ -z "`pidof npc`" ] || [ ! -s "/opt/bin/nps/npc" ] ; then
-		logger -t "【nps】" "npc重新启动"
-		nps_restart
-	fi
+i_app_keep -name="nps" -pidof="npc" &
 fi
-	sleep 230
-done
 }
 
 nps_close () {
@@ -141,7 +76,6 @@ kill_ps "$scriptname keep"
 sed -Ei '/【nps】|^$/d' /tmp/script/_opt_script_check
 sed -Ei '/【npc】|^$/d' /tmp/script/_opt_script_check
 killall nps npc
-killall -9 nps npc
 kill_ps "/tmp/script/_app14"
 kill_ps "_np_s.sh"
 kill_ps "$scriptname"
@@ -158,11 +92,11 @@ del_tmp=0
 if [ -z "$nps_version" ] ; then
 	curltest=`which curl`
 	if [ -z "$curltest" ] || [ ! -s "`which curl`" ] ; then
-		nps_tag="$( wget -T 5 -t 3 --user-agent "$user_agent" --max-redirect=0 --output-document=-  https://github.com/ehang-io/nps/releases/latest  2>&1 | grep releases/tag | awk -F '/' '{print $NF}' | awk -F ' ' '{print $1}' )"
-		[ -z "$nps_tag" ] && nps_tag="$( wget -T 5 -t 3 --user-agent "$user_agent" --quiet --output-document=-  https://github.com/ehang-io/nps/releases/latest  2>&1 | grep '/nps/tree/'  |head -n1 | awk -F '/' '{print $NF}' | awk -F '"' '{print $1}' )"
+		nps_tag="$( wget -T 5 -t 3 --user-agent "$user_agent" --max-redirect=0 --output-document=-  https://api.github.com/repos/yisier/nps/releases/latest  2>&1 | grep 'tag_name' | cut -d\" -f4 )"
+		[ -z "$nps_tag" ] && nps_tag="$( wget -T 5 -t 3 --user-agent "$user_agent" --quiet --output-document=-  https://api.github.com/repos/yisier/nps/releases/latest  2>&1 | grep 'tag_name' | cut -d\" -f4 )"
 	else
-		nps_tag="$( curl --connect-timeout 3 --user-agent "$user_agent"  https://github.com/ehang-io/nps/releases/latest  2>&1 | grep releases/tag | awk -F 'tag/' '{print $NF}' | awk -F '"' '{print $1}' )"
-		[ -z "$nps_tag" ] && nps_tag="$( curl -L --connect-timeout 3 --user-agent "$user_agent" -s  https://github.com/ehang-io/nps/releases/latest  2>&1 | grep '/nps/tree/'  |head -n1 | awk -F 'tree/' '{print $NF}' | awk -F '"' '{print $1}' )"
+		nps_tag="$( curl --connect-timeout 3 --user-agent "$user_agent"  https://api.github.com/repos/yisier/nps/releases/latest  2>&1 | grep 'tag_name' | cut -d\" -f4 )"
+		[ -z "$nps_tag" ] && nps_tag="$( curl -L --connect-timeout 3 --user-agent "$user_agent" -s  https://api.github.com/repos/yisier/nps/releases/latest  2>&1 | grep 'tag_name' | cut -d\" -f4 )"
 	fi
 	[ -z "$nps_tag" ] && logger -t "【nps】" "最新版本获取失败！！！请手动指定版本，例：[""$nps_version_2""]" && nps_restart x
 	[ ! -z "$nps_tag" ] && logger -t "【nps】" "自动下载最新版本 $nps_tag"
@@ -196,7 +130,7 @@ if [ ! -z "$action_nps" ] && [ -s "/opt/bin/nps/$action_nps" ] ; then
 	sleep 2
 	killall $action_nps
 	nps_ver="$(cat /tmp/nps_v.txt | grep version | awk -F ',' '{print $1}'  | awk -F ' ' '{print $NF}')"
-	if [ "$nps_ver" = "" ] ; then
+	if [ -z "$nps_ver" ] ; then
 		logger -t "【nps】" "$action_nps 当前版本 $nps_ver ,获取失败，请手动检查版本是否和服务器匹配!"
 	else
 	if [ v"$nps_ver" != "$nps_version" ] ; then
@@ -212,36 +146,37 @@ do
 if [ ! -z "$action_nps" ] ; then
 	SVC_PATH="/opt/bin/nps/$action_nps"
 	chmod 777 "$SVC_PATH"
-	[[ "$($SVC_PATH -h 2>&1 | wc -l)" -lt 2 ]] && rm -rf $SVC_PATH
 	if [ ! -s "$SVC_PATH" ] ; then
 		logger -t "【nps】" "找不到 $SVC_PATH ，安装 opt 程序"
 		/etc/storage/script/Sh01_mountopt.sh start
 		initopt
 	fi
 	if [ ! -s "$SVC_PATH" ] && [ "$action_nps" = "npc" ] ; then
-		nps_ver_wget="https://github.com/ehang-io/nps/releases/download/$nps_version/linux_mipsle_client.tar.gz"
+		nps_ver_wget="https://github.com/yisier/nps/releases/download/$nps_version/linux_mipsle_client.tar.gz"
 		wgetcurl_file /opt/bin/nps/linux_mipsle_client.tar.gz "$nps_ver_wget"
 		rm -rf /opt/bin/nps/tmp
 		mkdir -p /opt/bin/nps/tmp
 		tar -xz -C /opt/bin/nps/tmp -f /opt/bin/nps/linux_mipsle_client.tar.gz
+		rm -rf /opt/bin/nps/linux_mipsle_client.tar.gz
 		[ -f /opt/bin/nps/tmp/npc ] && mv -f /opt/bin/nps/tmp/npc $SVC_PATH
 		[ -f /opt/bin/nps/tmp/nps/npc ] && mv -f /opt/bin/nps/tmp/nps/npc $SVC_PATH
-		rm -rf /opt/bin/nps/tmp /opt/bin/nps/linux_mipsle_client.tar.gz
+		rm -rf /opt/bin/nps/tmp
 	fi
 	[ "$action_nps" = "nps" ] && [ ! -d /opt/bin/nps/conf ] && rm -rf $SVC_PATH /opt/bin/nps/conf
 	if [ ! -s "$SVC_PATH" ] && [ "$action_nps" = "nps" ] ; then
-		nps_ver_wget="https://github.com/ehang-io/nps/releases/download/$nps_version/linux_mipsle_server.tar.gz"
+		nps_ver_wget="https://github.com/yisier/nps/releases/download/$nps_version/linux_mipsle_server.tar.gz"
 		wgetcurl_file /opt/bin/nps/linux_mipsle_server.tar.gz "$nps_ver_wget"
 		rm -rf /opt/bin/nps/tmp
 		mkdir -p /opt/bin/nps/tmp
 		tar -xz -C /opt/bin/nps/tmp -f /opt/bin/nps/linux_mipsle_server.tar.gz
+		rm -rf /opt/bin/nps/linux_mipsle_server.tar.gz
 		[ -f /opt/bin/nps/tmp/nps ] && mv -f /opt/bin/nps/tmp/nps $SVC_PATH
 		[ -f /opt/bin/nps/tmp/nps/nps ] && mv -f /opt/bin/nps/tmp/nps/nps $SVC_PATH
 		[ -d /opt/bin/nps/tmp/conf ] && { cd /opt/bin/nps/tmp; tar -cz -f /opt/bin/nps/tmp/tmp.tar.gz ./conf ./web; }
 		[ -d /opt/bin/nps/tmp/nps/conf ] && { cd /opt/bin/nps/tmp/nps; tar -cz -f /opt/bin/nps/tmp/tmp.tar.gz ./conf ./web; }
 		tar -xz -C /opt/bin/nps -f /opt/bin/nps/tmp/tmp.tar.gz
 		rm -f /opt/bin/nps/conf/nps.conf
-		rm -rf /opt/bin/nps/tmp /opt/bin/nps/linux_mipsle_server.tar.gz
+		rm -rf /opt/bin/nps/tmp
 		if [ ! -d /etc/storage/nps/conf ] ; then
 			mkdir -p /etc/storage/nps/
 			cp -rf /opt/bin/nps/conf /etc/storage/nps/
@@ -252,7 +187,9 @@ if [ ! -z "$action_nps" ] ; then
 		ln -sf /etc/storage/nps/conf /opt/bin/nps/conf
 		[ ! -s /opt/bin/nps/conf ] && cp -f /etc/storage/nps/conf /opt/bin/nps/conf
 	fi
+	chmod 755 $SVC_PATH
 	[[ "$($SVC_PATH -h 2>&1 | wc -l)" -lt 2 ]] && rm -rf $SVC_PATH
+	wgetcurl_file "$SVC_PATH" "$hiboyfile/$action_nps" "$hiboyfile2/$action_nps"
 	if [ ! -s "$SVC_PATH" ] ; then
 		logger -t "【nps】" "找不到 $SVC_PATH ，需要手动安装 $SVC_PATH"
 		logger -t "【nps】" "启动失败, 10 秒后自动尝试重新启动" && sleep 10 && nps_restart x
@@ -289,22 +226,12 @@ if [ ! -z "$action_nps" ] ; then
 		logger -t "【nps】" "请手动配置【外部网络 - 端口转发 - 启用手动端口映射】来开启WAN访问"
 	fi
 	sleep 4
-	[ -z "`pidof $action_nps`" ] && logger -t "【nps】" "$action_nps启动失败, 注意检查端口是否有冲突,程序是否下载完整,10 秒后自动尝试重新启动" && sleep 10 && nps_restart x
-	[ ! -z "`pidof $action_nps`" ] && logger -t "【nps】" "$action_nps启动成功" && nps_restart o
+	i_app_keep -t -name="nps" -pidof="$action_nps"
 fi
 done
 #nps_get_status
 eval "$scriptfilepath keep &"
 exit 0
-}
-
-initopt () {
-optPath=`grep ' /opt ' /proc/mounts | grep tmpfs`
-[ ! -z "$optPath" ] && return
-if [ ! -z "$(echo $scriptfilepath | grep -v "/opt/etc/init")" ] && [ -s "/opt/etc/init.d/rc.func" ] ; then
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /opt/etc/init.d/$scriptname && chmod 777  /opt/etc/init.d/$scriptname
-fi
-
 }
 
 initconfig () {
@@ -313,7 +240,7 @@ app_15="/etc/storage/app_15.sh"
 if [ ! -f "$app_15" ] || [ ! -s "$app_15" ] ; then
 	cat > "$app_15" <<-\EEE
 [common]
-server_addr=1.1.1.1:8284
+server_addr=1.0.0.1:8284
 conn_type=tcp
 vkey=web界面中显示的密钥
 auto_reconnection=true
@@ -430,22 +357,11 @@ fi
 
 initconfig
 
-update_init () {
-source /etc/storage/script/init.sh
-[ "$init_ver" -lt 0 ] && init_ver="0" || { [ "$init_ver" -ge 0 ] || init_ver="0" ; }
-init_s_ver=2
-if [ "$init_s_ver" -gt "$init_ver" ] ; then
-	logger -t "【update_init】" "更新 /etc/storage/script/init.sh 文件"
-	wgetcurl.sh /tmp/init_tmp.sh  "$hiboyscript/script/init.sh" "$hiboyscript2/script/init.sh"
-	[ -s /tmp/init_tmp.sh ] && cp -f /tmp/init_tmp.sh /etc/storage/script/init.sh
-	chmod 755 /etc/storage/script/init.sh
-	source /etc/storage/script/init.sh
-fi
-}
-
 update_app () {
-update_init
 mkdir -p /opt/app/nps
+if [ "$1" = "update_asp" ] ; then
+	rm -rf /opt/app/nps/Advanced_Extensions_nps.asp
+fi
 if [ "$1" = "del" ] ; then
 	nps_version=""
 	nvram set app_57=""
@@ -487,6 +403,9 @@ updateapp14)
 	;;
 update_app)
 	update_app
+	;;
+update_asp)
+	update_app update_asp
 	;;
 keep)
 	#nps_check

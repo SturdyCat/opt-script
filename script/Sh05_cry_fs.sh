@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #copyright by hiboy
 source /etc/storage/script/init.sh
 cryfs_enable=`nvram get app_61`
@@ -13,7 +13,6 @@ if [ "$cryfs_key_enable" != "1" ] && [ ! -z "$cryfs_pass" ] ; then
 	nvram set app_63=""
 fi
 if [ "$cryfs_enable" != "0" ] ; then
-#nvramshow=`nvram showall | grep '=' | grep cryfs | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
 
 cryfs_renum=`nvram get cryfs_renum`
 cryfs_renum=${cryfs_renum:-"0"}
@@ -29,61 +28,21 @@ fi
 
 fi
 
-if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep cry_fs)" ]  && [ ! -s /tmp/script/_app15 ]; then
+if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep cry_fs)" ] && [ ! -s /tmp/script/_app15 ] ; then
 	mkdir -p /tmp/script
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_app15
+	{ echo '#!/bin/bash' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_app15
 	chmod 777 /tmp/script/_app15
 fi
 
 cryfs_restart () {
-
-relock="/var/lock/cryfs_restart.lock"
-if [ "$1" = "o" ] ; then
-	nvram set cryfs_renum="0"
-	[ -f $relock ] && rm -f $relock
-	return 0
-fi
-if [ "$1" = "x" ] ; then
-	if [ -f $relock ] ; then
-		logger -t "【cryfs】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		exit 0
-	fi
-	cryfs_renum=${cryfs_renum:-"0"}
-	cryfs_renum=`expr $cryfs_renum + 1`
-	nvram set cryfs_renum="$cryfs_renum"
-	if [ "$cryfs_renum" -gt "2" ] ; then
-		I=19
-		echo $I > $relock
-		logger -t "【cryfs】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		while [ $I -gt 0 ]; do
-			I=$(($I - 1))
-			echo $I > $relock
-			sleep 60
-			[ "$(nvram get cryfs_renum)" = "0" ] && exit 0
-			[ $I -lt 0 ] && break
-			get_tg_pass
-			[ "$cryfs_key_enable" = "2" ] && [ ! -z "$cryfs_pass" ] && break
-		done
-		nvram set cryfs_renum="0"
-	fi
-	[ -f $relock ] && rm -f $relock
-fi
-nvram set cryfs_status=0
-eval "$scriptfilepath &"
-exit 0
+i_app_restart "$@" -name="cryfs"
 }
 
 cryfs_get_status () {
 
-A_restart=`nvram get cryfs_status`
-B_restart="$cryfs_enable$cryfs_key_enable$cryfs_pass$(cat /etc/storage/app_17.sh /etc/storage/app_18.sh | grep -v '^#' | grep -v "^$")"
-B_restart=`echo -n "$B_restart" | md5sum | sed s/[[:space:]]//g | sed s/-//g`
-if [ "$A_restart" != "$B_restart" ] ; then
-	nvram set cryfs_status=$B_restart
-	needed_restart=1
-else
-	needed_restart=0
-fi
+B_restart="$cryfs_enable$cryfs_key_enable$cryfs_pass$(cat /etc/storage/app_17.sh /etc/storage/app_18.sh | grep -v '^#' | grep -v '^$')"
+
+i_app_get_status -name="cryfs" -valb="$B_restart"
 }
 
 cryfs_check () {
@@ -91,7 +50,7 @@ cryfs_check () {
 cryfs_get_status
 if [ "$cryfs_enable" != "1" ] && [ "$needed_restart" = "1" ] ; then
 	nvram set cryfs_update_id=""
-	[ ! -z "$(ps -w | grep "cryfs" | grep -v grep )" ] && logger -t "【cryfs】" "停止 cryfs" && cryfs_close
+	[ ! -z "`pidof cryfs`" ] && logger -t "【cryfs】" "停止 cryfs" && cryfs_close
 	{ kill_ps "$scriptname" exit0; exit 0; }
 fi
 if [ "$cryfs_enable" = "1" ] ; then
@@ -99,32 +58,13 @@ if [ "$cryfs_enable" = "1" ] ; then
 		cryfs_close
 		cryfs_start
 	else
-		[ "$cryfs_enable" = "1" ] && [ -z "$(ps -w | grep "cryfs" | grep -v grep )" ] && cryfs_restart
+		[ "$cryfs_enable" = "1" ] && [ -z "`pidof cryfs`" ] && cryfs_restart
 	fi
 fi
 }
 
 cryfs_keep () {
-logger -t "【cryfs】" "守护进程启动"
-if [ -s /tmp/script/_opt_script_check ]; then
-sed -Ei '/【cryfs】|^$/d' /tmp/script/_opt_script_check
-if [ "$cryfs_enable" = "1" ] ; then
-cat >> "/tmp/script/_opt_script_check" <<-OSC
-	[ -z "\`pidof cryfs\`" ] || [ ! -s "/opt/bin/cryfs" ] && nvram set cryfs_status=00 && logger -t "【cryfs】" "重新启动" && eval "$scriptfilepath &" && sed -Ei '/【cryfs】|^$/d' /tmp/script/_opt_script_check # 【cryfs】
-OSC
-fi
-return
-fi
-
-while true; do
-if [ "$cryfs_enable" = "1" ] ; then
-	if [ -z "`pidof cryfs`" ] || [ ! -s "`which cryfs`" ] ; then
-		logger -t "【cryfs】" "cryfs重新启动"
-		cryfs_restart
-	fi
-fi
-	sleep 205
-done
+i_app_keep -name="cryfs" -pidof="cryfs" &
 }
 
 cryfs_close () {
@@ -132,7 +72,7 @@ kill_ps "$scriptname keep"
 sed -Ei '/【cryfs】|^$/d' /tmp/script/_opt_script_check
 set_app_list_stop
 killall cryfs app_18.sh
-killall -9 cryfs app_18.sh
+sync;echo 3 > /proc/sys/vm/drop_caches
 kill_ps "/tmp/script/_app15"
 kill_ps "_cry_fs.sh"
 kill_ps "$scriptname"
@@ -176,15 +116,20 @@ set_app_list_off
 SVC_PATH=/opt/bin/cryfs
 chmod 777 "$SVC_PATH"
 if [ ! -s "$SVC_PATH" ] ; then
-	logger -t "【cryfs】" "找不到 $SVC_PATH，安装 opt 程序"
-	/etc/storage/script/Sh01_mountopt.sh optwget
+	logger -t "【cryfs】" "找不到 $SVC_PATH，安装 opt mini 程序"
+	/etc/storage/script/Sh01_mountopt.sh opt_mini_wget
+	initopt
 fi
 if [ ! -s "$SVC_PATH" ] ; then
-	logger -t "【cryfs】" "找不到 $SVC_PATH，opkg update; opkg install cryfs 安装程序"
+	logger -t "【cryfs】" "找不到 $SVC_PATH，正在尝试[opkg update; opkg install cryfs]安装"
 	opkg update
 	opkg install cryfs
 	if [ ! -s "$SVC_PATH" ] ; then
-		logger -t "【cryfs】" "找不到 $SVC_PATH ，需要手动安装 opt 后输入[opkg update; opkg install cryfs]"
+		logger -t "【cryfs】" "找不到 $SVC_PATH，安装 opt full 程序"
+		/etc/storage/script/Sh01_mountopt.sh opt_full_wget
+	fi
+	if [ ! -s "$SVC_PATH" ] ; then
+		logger -t "【cryfs】" "找不到 $SVC_PATH，需要手动安装 opt 后输入[opkg update; opkg install cryfs]安装"
 		logger -t "【cryfs】" "启动失败, 30 秒后自动尝试重新启动" && sleep 30 && cryfs_restart x
 	else
 		logger -t "【cryfs】" "找到 $SVC_PATH"
@@ -212,21 +157,11 @@ fi
 logger -t "【cryfs】" "运行 /etc/storage/app_18.sh"
 eval "/etc/storage/app_18.sh $cryfs_pass $cmd_log"
 sleep 4
-[ -z "`pidof cryfs`" ] && logger -t "【cryfs】" "启动失败, 注意检查密码是否有错误,程序是否下载完整,30 秒后自动尝试重新启动" && sleep 30 && cryfs_restart x
+i_app_keep -t -name="cryfs" -pidof="cryfs"
 set_app_list_on
-[ ! -z "`pidof cryfs`" ] && logger -t "【cryfs】" "启动成功" && cryfs_restart o
 [ "$cryfs_key_enable" != "1" ] && cryfs_pass=`nvram get app_63` && cryfs_get_status
 eval "$scriptfilepath keep &"
 exit 0
-
-}
-
-initopt () {
-optPath=`grep ' /opt ' /proc/mounts | grep tmpfs`
-[ ! -z "$optPath" ] && return
-if [ ! -z "$(echo $scriptfilepath | grep -v "/opt/etc/init")" ] && [ -s "/opt/etc/init.d/rc.func" ] ; then
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /opt/etc/init.d/$scriptname && chmod 777  /opt/etc/init.d/$scriptname
-fi
 
 }
 
@@ -247,7 +182,7 @@ fi
 app_18="/etc/storage/app_18.sh"
 if [ ! -f "$app_18" ] || [ ! -s "$app_18" ] ; then
 	cat > "$app_18" <<-\EEE
-#!/bin/sh
+#!/bin/bash
 export PATH='/etc/storage/bin:/tmp/script:/etc/storage/script:/opt/usr/sbin:/opt/usr/bin:/opt/sbin:/opt/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin'
 export LD_LIBRARY_PATH=/lib:/opt/lib
 # 加密数据存储在 /tmp/AiDisk_00/lockdir_cryfsdata 路径中
@@ -270,7 +205,7 @@ EEE
 
 fi
 
-cat /etc/storage/app_17.sh | grep -v '^#' | sort -u | grep -v "^$" | sed s/！/!/g > /tmp/cryfs_app_list.txt
+cat /etc/storage/app_17.sh | grep -v '^#' | sort -u | grep -v '^$' | sed s/！/!/g > /tmp/cryfs_app_list.txt
 
 }
 
@@ -341,7 +276,7 @@ if [ "$cryfs_key_enable" = "2" ] && [ -z "$cryfs_pass" ] ; then
 	fi
 	reup=1
 	upPassword=""
-	while [ "$upPassword" = "" ] && [ "$reup" -lt "7" ];
+	while [ -z "$upPassword" ] && [ "$reup" -lt "7" ];
 	do
 	logger -t "【cryfs】" "等待 tgbot 密码返回"
 	sleep 30 ; reup=`expr $reup + 1`
@@ -370,22 +305,11 @@ fi
 
 }
 
-update_init () {
-source /etc/storage/script/init.sh
-[ "$init_ver" -lt 0 ] && init_ver="0" || { [ "$init_ver" -ge 0 ] || init_ver="0" ; }
-init_s_ver=2
-if [ "$init_s_ver" -gt "$init_ver" ] ; then
-	logger -t "【update_init】" "更新 /etc/storage/script/init.sh 文件"
-	wgetcurl.sh /tmp/init_tmp.sh  "$hiboyscript/script/init.sh" "$hiboyscript2/script/init.sh"
-	[ -s /tmp/init_tmp.sh ] && cp -f /tmp/init_tmp.sh /etc/storage/script/init.sh
-	chmod 755 /etc/storage/script/init.sh
-	source /etc/storage/script/init.sh
-fi
-}
-
 update_app () {
-update_init
 mkdir -p /opt/app/cryfs
+if [ "$1" = "update_asp" ] ; then
+	rm -rf /opt/app/cryfs/Advanced_Extensions_cryfs.asp
+fi
 if [ "$1" = "del" ] ; then
 	rm -rf /opt/app/cryfs/Advanced_Extensions_cryfs.asp
 	opkg update
@@ -425,6 +349,9 @@ updateapp15)
 	;;
 update_app)
 	update_app
+	;;
+update_asp)
+	update_app update_asp
 	;;
 keep)
 	#cryfs_check

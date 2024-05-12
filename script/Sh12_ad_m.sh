@@ -1,14 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 #copyright by hiboy
 source /etc/storage/script/init.sh
 TAG="AD_BYBY"		  # iptables tag
 adm_enable=`nvram get adm_enable`
 [ -z $adm_enable ] && adm_enable=0 && nvram set adm_enable=0
 if [ "$adm_enable" != "0" ] ; then
-#nvramshow=`nvram showall | grep '=' | grep ss | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
-#nvramshow=`nvram showall | grep '=' | grep adbyby | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
-#nvramshow=`nvram showall | grep '=' | grep koolproxy | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
-#nvramshow=`nvram showall | grep '=' | grep adm | awk '{print gensub(/'"'"'/,"'"'"'\"'"'"'\"'"'"'","g",$0);}'| awk '{print gensub(/=/,"='\''",1,$0)"'\'';";}'` && eval $nvramshow
 adbyby_mode_x=`nvram get adbyby_mode_x`
 [ -z $adbyby_mode_x ] && adbyby_mode_x=0 && nvram set adbyby_mode_x=0
 adm_update=`nvram get adm_update`
@@ -55,9 +51,9 @@ confdir_x="$(echo -e $confdir | sed -e "s/\//"'\\'"\//g")"
 gfwlist="/r.gfwlist.conf"
 gfw_black_list="gfwlist"
 
-if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep ad_m)" ]  && [ ! -s /tmp/script/_ad_m ]; then
+if [ ! -z "$(echo $scriptfilepath | grep -v "/tmp/script/" | grep ad_m)" ] && [ ! -s /tmp/script/_ad_m ] ; then
 	mkdir -p /tmp/script
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_ad_m
+	{ echo '#!/bin/bash' ; echo $scriptfilepath '"$@"' '&' ; } > /tmp/script/_ad_m
 	chmod 777 /tmp/script/_ad_m
 fi
 
@@ -138,53 +134,14 @@ fi
 }
 
 adm_restart () {
-
-relock="/var/lock/adm_restart.lock"
-if [ "$1" = "o" ] ; then
-	nvram set adm_renum="0"
-	[ -f $relock ] && rm -f $relock
-	return 0
-fi
-if [ "$1" = "x" ] ; then
-	rm -rf /tmp/7620adm/*
-	if [ -f $relock ] ; then
-		logger -t "【adm】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		exit 0
-	fi
-	adm_renum=${adm_renum:-"0"}
-	adm_renum=`expr $adm_renum + 1`
-	nvram set adm_renum="$adm_renum"
-	if [ "$adm_renum" -gt "2" ] ; then
-		I=19
-		echo $I > $relock
-		logger -t "【adm】" "多次尝试启动失败，等待【"`cat $relock`"分钟】后自动尝试重新启动"
-		while [ $I -gt 0 ]; do
-			I=$(($I - 1))
-			echo $I > $relock
-			sleep 60
-			[ "$(nvram get adm_renum)" = "0" ] && exit 0
-			[ $I -lt 0 ] && break
-		done
-		nvram set adm_renum="0"
-	fi
-	[ -f $relock ] && rm -f $relock
-fi
-nvram set adm_status=0
-eval "$scriptfilepath &"
-exit 0
+i_app_restart "$@" -name="adm"
 }
 
 adm_get_status () {
 
-A_restart=`nvram get adm_status`
-B_restart="$adm_enable$adm_update$adm_update_hour$adm_update_min$adbmfile$adbmfile2$lan_ipaddr$adm_https$adbyby_mode_x$adm_hookport$adbyby_CPUAverages$ss_DNS_Redirect$ss_DNS_Redirect_IP$(cat /etc/storage/ad_config_script.sh | grep -v "^$" | grep -v "^#")$(cat /etc/storage/adm_rules_script.sh | grep -v "^$" | grep -v "^!")"
-B_restart=`echo -n "$B_restart" | md5sum | sed s/[[:space:]]//g | sed s/-//g`
-if [ "$A_restart" != "$B_restart" ] ; then
-	nvram set adm_status=$B_restart
-	needed_restart=1
-else
-	needed_restart=0
-fi
+B_restart="$adm_enable$adm_update$adm_update_hour$adm_update_min$adbmfile$adbmfile2$lan_ipaddr$adm_https$adbyby_mode_x$adm_hookport$adbyby_CPUAverages$ss_DNS_Redirect$ss_DNS_Redirect_IP$(cat /etc/storage/ad_config_script.sh | grep -v '^$' | grep -v '^#')$(cat /etc/storage/adm_rules_script.sh | grep -v '^$' | grep -v "^!")"
+
+i_app_get_status -name="adm" -valb="$B_restart"
 }
 
 adm_check () {
@@ -213,50 +170,12 @@ fi
 }
 
 adm_keep () {
-
-cat > "/tmp/sh_ad_m_keey_k.sh" <<-ADMK
-#!/bin/sh
-source /etc/storage/script/init.sh
-sleep 919
-adm_enable=\`nvram get adm_enable\`
-if [ ! -f /tmp/cron_adb.lock ] && [ "\$adm_enable" = "1" ] ; then
-kill_ps "$scriptname"
-eval "$scriptfilepath keep &"
-exit 0
-fi
-ADMK
-chmod 777 "/tmp/sh_ad_m_keey_k.sh"
-killall sh_ad_m_keey_k.sh
-killall -9 sh_ad_m_keey_k.sh
-/tmp/sh_ad_m_keey_k.sh &
-
 rm -f /tmp/cron_adb.lock
 /etc/storage/script/sh_ezscript.sh 3 & #更新按钮状态
+i_app_keep -name="adm" -pidof="adm" &
 while true; do
-adm_enable=`nvram get adm_enable`
-[ "$adm_enable" != "1" ] && exit
-[ ! -s "/tmp/7620adm/adm" ] && logger -t "【ADM】" "重新启动" && adm_restart
 if [ ! -f /tmp/cron_adb.lock ] ; then
 	if [ ! -f /tmp/cron_adb.lock ] ; then
-		PIDS=$(ps -w | grep "/tmp/7620adm/adm" | grep -v "grep" | wc -l)
-		if [ "$PIDS" = 0 ] ; then 
-			logger -t "【ADM】" "找不到进程, 重启 adm"
-			adm_flush_rules
-			killall -15 adm
-			killall -9 adm
-			sleep 3
-			/tmp/7620adm/adm &
-			sleep 20
-		fi
-		if [ "$PIDS" -gt 2 ] ; then 
-			logger -t "【ADM】" "进程重复, 重启 adm"
-			adm_flush_rules
-			killall -15 adm
-			killall -9 adm
-			sleep 3
-			/tmp/7620adm/adm &
-			sleep 20
-		fi
 		port=$(iptables -t nat -L | grep 'ports 18309' | wc -l)
 			if [ "$port" -gt 1 ] && [ ! -f /tmp/cron_adb.lock ] ; then
 				logger -t "【ADM】" "有多个18309转发规则, 删除多余"
@@ -289,8 +208,7 @@ if [ "$adbyby_CPUAverages" = "1" ] && [ ! -f /tmp/cron_adb.lock ] ; then
 		logger -t "【ADM】" "CPU 负载拥堵, 关闭 adm"
 		adm_flush_rules
 		/etc/storage/script/sh_ezscript.sh 3 & #更新按钮状态
-		killall -15 adm
-		killall -9 adm
+		killall adm
 		touch /tmp/cron_adb.lock
 		while [[ "$CPULoad" -gt "$processor" ]] 
 		do
@@ -311,15 +229,12 @@ cru.sh d adm_update &
 cru.sh d koolproxy_update &
 port=$(iptables -t nat -L | grep 'ports 18309' | wc -l)
 [ "$port" != 0 ] && adm_flush_rules
-[ "$adbyby_enable" != "1" ] && killall -15 adbyby sh_ad_byby_keey_k.sh
-[ "$adbyby_enable" != "1" ] && killall -9 adbyby sh_ad_byby_keey_k.sh
-killall -15 adm sh_ad_m_keey_k.sh
-killall -9 adm sh_ad_m_keey_k.sh
-[ "$koolproxy_enable" != "1" ] && killall -15 koolproxy sh_ad_kp_keey_k.sh
-[ "$koolproxy_enable" != "1" ] && killall -9 koolproxy sh_ad_kp_keey_k.sh
+[ "$adbyby_enable" != "1" ] && killall adbyby sh_ad_byby_keey_k.sh
+killall adm
+[ "$koolproxy_enable" != "1" ] && killall koolproxy sh_ad_kp_keey_k.sh
 /etc/storage/script/sh_ezscript.sh 3 & #更新按钮状态
 rm -f /tmp/adbyby_host.conf
-rm -f /tmp/7620adm.tgz /tmp/cron_adb.lock /tmp/sh_ad_m_keey_k.sh /tmp/cp_rules.lock
+rm -f /tmp/7620adm.tgz /tmp/cron_adb.lock /tmp/cp_rules.lock
 kill_ps "/tmp/script/_ad_m"
 kill_ps "_ad_m.sh"
 kill_ps "$scriptname"
@@ -364,14 +279,14 @@ if [ -z "`pidof adm`" ] && [ "$adm_enable" = "1" ] && [ ! -f /tmp/cron_adb.lock 
 		if [ ! -z "$c_line" ] ; then
 			logger -t "【ADM】" "下载规则:$line"
 			wgetcurl.sh /tmp/7620adm/user2.txt $line $line N
-			cat /tmp/7620adm/user2.txt | grep -v '^!' | grep -E '^(@@\||\||[[:alnum:]])' | sort -u | grep -v "^$" >> /tmp/7620adm/user3adblocks.txt
+			cat /tmp/7620adm/user2.txt | grep -v '^!' | grep -E '^(@@\||\||[[:alnum:]])' | sort -u | grep -v '^$' >> /tmp/7620adm/user3adblocks.txt
 			rm -f /tmp/7620adm/user2.txt
 		fi
 		done < /tmp/rule_DOMAIN.txt
 	fi
 	# 合并规则
-	cat /etc/storage/adm_rules_script.sh | grep -v '^!' | grep -v "^$" > /tmp/7620adm/user.txt
-	cat /tmp/7620adm/user3adblocks.txt | grep -v '^!' | grep -v "^$" >> /tmp/7620adm/user.txt
+	cat /etc/storage/adm_rules_script.sh | grep -v '^!' | grep -v '^$' > /tmp/7620adm/user.txt
+	cat /tmp/7620adm/user3adblocks.txt | grep -v '^!' | grep -v '^$' >> /tmp/7620adm/user.txt
 	logger -t "【ADM】" "启动 adm 程序"
 	cd /tmp/7620adm
 	export PATH='/tmp/7620adm:/etc/storage/bin:/tmp/script:/etc/storage/script:/opt/usr/sbin:/opt/usr/bin:/opt/sbin:/opt/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin'
@@ -389,8 +304,7 @@ if [ -z "`pidof adm`" ] && [ "$adm_enable" = "1" ] && [ ! -f /tmp/cron_adb.lock 
 		[ ! -f /etc/storage/adm/adm_ca_key.pem ] && [ -f /tmp/7620adm/adm_ca_key.pem ] && cp /tmp/7620adm/adm_ca_key.pem /etc/storage/adm/adm_ca_key.pem && mtd_storage.sh save &
 	#fi
 fi
-[ ! -z "`pidof adm`" ] && logger -t "【ADM】" "启动成功" && adm_restart o
-[ -z "`pidof adm`" ] && logger -t "【ADM】" "启动失败, 注意检查端口是否有冲突,程序是否下载完整,10 秒后自动尝试重新启动" && sleep 10 && adm_restart x
+i_app_keep -t -name="adm" -pidof="adm"
 adm_add_rules
 rm -f /tmp/7620adm.tgz /tmp/cron_adb.lock
 /etc/storage/script/sh_ezscript.sh 3 & #更新按钮状态
@@ -408,7 +322,7 @@ iptables-save -c | sed  "s/webstr--url/webstr --url/g" | grep -v "$TAG" | iptabl
 for setname in $(ipset -n list | grep -i "ad_spec"); do
 	ipset destroy $setname 2>/dev/null
 done
-[ -n "$FWI" ] && echo '#!/bin/sh' >$FWI
+[ -n "$FWI" ] && echo '#!/bin/bash' >$FWI
 }
 
 adm_cp_rules() {
@@ -430,7 +344,7 @@ sed -Ei "/\/opt\/app\/ss_tproxy\/dnsmasq.d\/r.gfwlist.conf/d" /etc/storage/dnsma
 [ -s /tmp/ss_tproxy/dnsmasq.d/r.gfwlist.conf ] && [ -z "$(cat /etc/storage/dnsmasq/dnsmasq.conf | grep "/tmp/ss_tproxy/dnsmasq.d")" ] && echo "conf-file=/opt/app/ss_tproxy/dnsmasq.d/r.gfwlist.conf" >> "/etc/storage/dnsmasq/dnsmasq.conf"
 ipset flush adbybylist
 ipset add adbybylist 188.188.188.188
-restart_dhcpd
+restart_on_dhcpd
 
 logger -t "【iptables】" "admlist 规则处理完毕"
 
@@ -443,7 +357,7 @@ flush_r
 ipset -F adbybylist &> /dev/null
 #ipset destroy adbybylist &> /dev/null
 sed -Ei "/\/opt\/app\/ss_tproxy\/dnsmasq.d\/r.gfwlist.conf/d" /etc/storage/dnsmasq/dnsmasq.conf
-restart_dhcpd
+restart_on_dhcpd
 logger -t "【iptables】" "完成删除18309规则"
 }
 
@@ -482,7 +396,7 @@ if [ -n "$AD_LAN_AC_IP" ] ; then
 			;;
 	esac
 fi
-cat /tmp/ad_spec_lan_DOMAIN.txt | grep -v '^#' | sort -u | grep -v "^$" | sed s/！/!/g > /tmp/ad_spec_lan.txt
+cat /tmp/ad_spec_lan_DOMAIN.txt | grep -v '^#' | sort -u | grep -v '^$' | sed s/！/!/g > /tmp/ad_spec_lan.txt
 while read line
 do
 for host in $line; do
@@ -576,6 +490,7 @@ kcptun_server=`nvram get kcptun_server`
 if [ "$kcptun_enable" != "0" ] ; then
 if [ -z $(echo $kcptun_server | grep : | grep -v "\.") ] ; then 
 resolveip=`ping -4 -n -q -c1 -w1 -W1 $kcptun_server | head -n1 | sed -r 's/\(|\)/|/g' | awk -F'|' '{print $2}'`
+[ -z "$resolveip" ] && resolveip=`ping -6 -n -q -c1 -w1 -W1 $kcptun_server | head -n1 | sed -r 's/\(|\)/|/g' | awk -F'|' '{print $2}'`
 [ -z "$resolveip" ] && resolveip=`arNslookup $kcptun_server | sed -n '1p'` 
 kcptun_server=$resolveip
 else
@@ -592,6 +507,7 @@ ss_server=`nvram get ss_server`
 if [ "$ss_enable" != "0" ] ; then
 if [ -z $(echo $ss_server | grep : | grep -v "\.") ] ; then 
 resolveip=`ping -4 -n -q -c1 -w1 -W1 $ss_server | head -n1 | sed -r 's/\(|\)/|/g' | awk -F'|' '{print $2}'`
+[ -z "$resolveip" ] && resolveip=`ping -6 -n -q -c1 -w1 -W1 $ss_server | head -n1 | sed -r 's/\(|\)/|/g' | awk -F'|' '{print $2}'`
 [ -z "$resolveip" ] && resolveip=`arNslookup $ss_server | sed -n '1p'` 
 ss_s1_ip=$resolveip
 else
@@ -622,7 +538,6 @@ cat <<-EOF | grep -E "^([0-9]{1,3}\.){3}[0-9]{1,3}"
 224.0.0.0/4
 240.0.0.0/4
 255.255.255.255
-213.183.51.102
 $lan_ipaddr
 $ss_s1_ip_echo
 $kcptun_server_echo
@@ -650,7 +565,7 @@ EOF
 }
 
 include_ac_rules2 () {
-cat /tmp/ad_spec_lan_DOMAIN.txt | grep -v '^#' | sort -u | grep -v "^$" | grep -v "\." | sed s/！/!/g > /tmp/ad_spec_lan.txt
+cat /tmp/ad_spec_lan_DOMAIN.txt | grep -v '^#' | sort -u | grep -v '^$' | grep -v "\." | sed s/！/!/g > /tmp/ad_spec_lan.txt
 while read line
 do
 for host in $line; do
@@ -718,14 +633,14 @@ adm_cron_job(){
 	[ -z $adm_update ] && adm_update=0 && nvram set adm_update=$adm_update
 	[ -z $adm_update_hour ] && adm_update_hour=23 && nvram set adm_update_hour=$adm_update_hour
 	[ -z $adm_update_min ] && adm_update_min=59 && nvram set adm_update_min=$adm_update_min
-	if [ "0" == "$adm_update" ]; then
+	if [ "0" == "$adm_update" ] ; then
 	[ $adm_update_hour -gt 23 ] && adm_update_hour=23 && nvram set adm_update_hour=$adm_update_hour
 	[ $adm_update_hour -lt 0 ] && adm_update_hour=0 && nvram set adm_update_hour=$adm_update_hour
 	[ $adm_update_min -gt 59 ] && adm_update_min=59 && nvram set adm_update_min=$adm_update_min
 	[ $adm_update_min -lt 0 ] && adm_update_min=0 && nvram set adm_update_min=$adm_update_min
 		logger -t "【adm】" "开启规则定时更新，每天"$adm_update_hour"时"$adm_update_min"分，检查在线规则更新..."
 		cru.sh a adm_update "$adm_update_min $adm_update_hour * * * $scriptfilepath update &" &
-	elif [ "1" == "$adm_update" ]; then
+	elif [ "1" == "$adm_update" ] ; then
 	#[ $adm_update_hour -gt 23 ] && adm_update_hour=23 && nvram set adm_update_hour=$adm_update_hour
 	[ $adm_update_hour -lt 0 ] && adm_update_hour=0 && nvram set adm_update_hour=$adm_update_hour
 	[ $adm_update_min -gt 59 ] && adm_update_min=59 && nvram set adm_update_min=$adm_update_min
@@ -735,43 +650,6 @@ adm_cron_job(){
 	else
 		logger -t "【adm】" "规则自动更新关闭状态，不启用自动更新..."
 	fi
-}
-
-arNslookup() {
-mkdir -p /tmp/arNslookup
-nslookup $1 | tail -n +3 | grep "Address" | awk '{print $3}'| grep -v ":" > /tmp/arNslookup/$$ &
-I=5
-while [ ! -s /tmp/arNslookup/$$ ] ; do
-		I=$(($I - 1))
-		[ $I -lt 0 ] && break
-		sleep 1
-done
-if [ -s /tmp/arNslookup/$$ ] ; then
-cat /tmp/arNslookup/$$ | sort -u | grep -v "^$"
-rm -f /tmp/arNslookup/$$
-else
-	curltest=`which curl`
-	if [ -z "$curltest" ] || [ ! -s "`which curl`" ] ; then
-		Address="`wget -T 5 -t 3 --user-agent "$user_agent" --quiet --output-document=- http://119.29.29.29/d?dn=$1`"
-		if [ $? -eq 0 ]; then
-		echo "$Address" |  sed s/\;/"\n"/g | grep -E -o '([0-9]+\.){3}[0-9]+'
-		fi
-	else
-		Address="`curl --user-agent "$user_agent" -s http://119.29.29.29/d?dn=$1`"
-		if [ $? -eq 0 ]; then
-		echo "$Address" |  sed s/\;/"\n"/g | grep -E -o '([0-9]+\.){3}[0-9]+'
-		fi
-	fi
-fi
-}
-
-initopt () {
-optPath=`grep ' /opt ' /proc/mounts | grep tmpfs`
-[ ! -z "$optPath" ] && return
-if [ ! -z "$(echo $scriptfilepath | grep -v "/opt/etc/init")" ] && [ -s "/opt/etc/init.d/rc.func" ] ; then
-	{ echo '#!/bin/sh' ; echo $scriptfilepath '"$@"' '&' ; } > /opt/etc/init.d/$scriptname && chmod 777  /opt/etc/init.d/$scriptname
-fi
-
 }
 
 initconfig () {
@@ -858,8 +736,6 @@ C)
 	;;
 update)
 	[ "$adm_enable" != "1" ] && exit 0
-	killall sh_ad_m_keey_k.sh
-	killall -9 sh_ad_m_keey_k.sh
 	checka="/tmp/var/admrule_everyday.txt"
 	rm -f /tmp/var/admrule_everyday.txt
 	urla="http://update2.admflt.com/ruler/admrule_everyday.txt"
@@ -871,7 +747,6 @@ update)
 	else
 		logger -t "【ADM】" "更新检查:不需更新 $urla "
 	fi
-	[ -s /tmp/sh_ad_m_keey_k.sh ] && /tmp/sh_ad_m_keey_k.sh &
 	;;
 update_ad)
 	adm_mount
